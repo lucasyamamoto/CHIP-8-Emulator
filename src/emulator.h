@@ -66,7 +66,7 @@ private:
     void draw(RegisterIndex x, RegisterIndex y, RegisterArgument n);                // DXYN
     void skipByKey(RegisterIndex x, RegisterArgument op);                           // EX**
     void skipPressed(RegisterIndex x);                                              // EX9E
-    void skipNotPressed(RegisterIndex x);                                           // EX9E
+    void skipNotPressed(RegisterIndex x);                                           // EXA1
     void specialOperations(RegisterIndex x, RegisterArgument op);                   // FX**
     void getDelayTimer(RegisterIndex x);                                            // FX07
     void waitForKey(RegisterIndex x);                                               // FX0A

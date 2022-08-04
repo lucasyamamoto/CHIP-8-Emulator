@@ -256,7 +256,15 @@ void CHIP8Emulator::updateSoundTimer()
 
 void CHIP8Emulator::basicOperations(AddressArgument op)
 {
-
+    switch(op)
+    {
+    case 0xe0:
+        clear();
+        break;
+    case 0xee:
+        ret();
+        break;
+    }
 }
 
 void CHIP8Emulator::clear()
@@ -306,7 +314,36 @@ void CHIP8Emulator::addValue(RegisterIndex x, RegisterArgument n)
 
 void CHIP8Emulator::registerOperations(RegisterIndex x, RegisterIndex y, RegisterArgument op)
 {
-
+    switch(op)
+    {
+    case 0x0:
+        registerMov(x, y);
+        break;
+    case 0x1:
+        registerOr(x, y);
+        break;
+    case 0x2:
+        registerAnd(x, y);
+        break;
+    case 0x3:
+        registerXor(x, y);
+        break;
+    case 0x4:
+        registerAdd(x, y);
+        break;
+    case 0x5:
+        registerSub(x, y);
+        break;
+    case 0x6:
+        registerShiftRight(x, y);
+        break;
+    case 0x7:
+        registerMinus(x, y);
+        break;
+    case 0xe:
+        registerShiftLeft(x, y);
+        break;
+    }
 }
 
 void CHIP8Emulator::registerMov(RegisterIndex x, RegisterIndex y)
@@ -377,7 +414,15 @@ void CHIP8Emulator::draw(RegisterIndex x, RegisterIndex y, RegisterArgument n)
 
 void CHIP8Emulator::skipByKey(RegisterIndex x, RegisterArgument op)
 {
-
+    switch(op)
+    {
+    case 0x9e:
+        skipPressed(x);
+        break;
+    case 0xa1:
+        skipNotPressed(x);
+        break;
+    }
 }
 
 void CHIP8Emulator::skipPressed(RegisterIndex x)
@@ -392,7 +437,36 @@ void CHIP8Emulator::skipNotPressed(RegisterIndex x)
 
 void CHIP8Emulator::specialOperations(RegisterIndex x, RegisterArgument op)
 {
-
+    switch(op)
+    {
+    case 0x07:
+        getDelayTimer(x);
+        break;
+    case 0x0a:
+        waitForKey(x);
+        break;
+    case 0x15:
+        setDelayTimer(x);
+        break;
+    case 0x18:
+        setSoundTimer(x);
+        break;
+    case 0x1e:
+        addIndex(x);
+        break;
+    case 0x29:
+        getSpriteAddress(x);
+        break;
+    case 0x33:
+        storeDecimal(x);
+        break;
+    case 0x55:
+        storeRegisters(x);
+        break;
+    case 0x65:
+        fillRegisters(x);
+        break;
+    }
 }
 
 void CHIP8Emulator::getDelayTimer(RegisterIndex x)
