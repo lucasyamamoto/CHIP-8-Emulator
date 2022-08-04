@@ -1,6 +1,7 @@
 #ifndef _EMULATOR_H
 
 #include <string>
+#include <random>
 
 typedef unsigned char GeneralRegister;
 typedef unsigned short SpecialRegister;
@@ -37,6 +38,14 @@ private:
     void updateTimers();
     void updateDelayTimer();
     void updateSoundTimer();
+    void advancePC();
+    void setPC(SpecialRegister newPC);
+
+    /* Stack operations */
+    void stackPush(unsigned short value);
+    unsigned short stackPop();
+    bool stackIsFull();
+    bool stackIsEmpty();
 
     /* Instruction methods */
     void basicOperations(AddressArgument op);                                       // 0***
@@ -97,6 +106,10 @@ private:
 
     /* Keypad */
     unsigned char* key;
+
+    /* Random number generator */
+    std::mt19937 randomGenerator;
+    std::uniform_int_distribution<RegisterArgument> dist;
 };
 
 #endif      // _EMULATOR_H

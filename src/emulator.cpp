@@ -46,11 +46,15 @@ CHIP8Emulator::CHIP8Emulator()
     gfx   = new unsigned char[NUM_PIXELS]{};
     stack = new unsigned short[STACK_LEVEL]{};
     key   = new unsigned char[NUM_KEYS]{};
+
+    std::random_device seed;
+    randomGenerator = std::mt19937(seed);
+    dist = std::uniform_int_distribution<RegisterArgument>();
 }
 
 CHIP8Emulator::CHIP8Emulator(const CHIP8Emulator& other)
-    : I(other.I), PC(other.PC), delayTimer(other.delayTimer), 
-      soundTimer(other.soundTimer), SP(other.SP)
+    : I(other.I), PC(other.PC), delayTimer(other.delayTimer), soundTimer(other.soundTimer), 
+      SP(other.SP), randomGenerator(other.randomGenerator), dist(other.dist)
 {
     V     = new GeneralRegister[NUM_GENERAL_REGISTERS];
     mem   = new unsigned char[MEMORY_SIZE];
@@ -69,7 +73,8 @@ CHIP8Emulator::CHIP8Emulator(CHIP8Emulator&& other)
     : V(other.V), I(other.I), PC(other.PC), mem(other.mem), 
       gfx(other.gfx), delayTimer(other.delayTimer), 
       soundTimer(other.soundTimer), stack(other.stack), 
-      SP(other.SP), key(other.key)
+      SP(other.SP), key(other.key), randomGenerator(other.randomGenerator),
+      dist(other.dist)
 {
     other.V     = nullptr;
     other.mem   = nullptr;
@@ -80,11 +85,13 @@ CHIP8Emulator::CHIP8Emulator(CHIP8Emulator&& other)
 
 CHIP8Emulator& CHIP8Emulator::operator=(const CHIP8Emulator& other)
 {
-    I          = other.I;
-    PC         = other.PC;
-    delayTimer = other.delayTimer;
-    soundTimer = other.soundTimer;
-    SP         = other.SP;
+    I               = other.I;
+    PC              = other.PC;
+    delayTimer      = other.delayTimer;
+    soundTimer      = other.soundTimer;
+    SP              = other.SP;
+    randomGenerator = other.randomGenerator;
+    dist            = other.dist;
 
     std::memcpy(V    , other.V    , sizeof(GeneralRegister) * NUM_GENERAL_REGISTERS);
     std::memcpy(mem  , other.mem  , sizeof(unsigned char) * MEMORY_SIZE);
@@ -95,16 +102,18 @@ CHIP8Emulator& CHIP8Emulator::operator=(const CHIP8Emulator& other)
 
 CHIP8Emulator& CHIP8Emulator::operator=(CHIP8Emulator&& other)
 {
-    V          = other.V;
-    I          = other.I;
-    PC         = other.PC;
-    mem        = other.mem;
-    gfx        = other.gfx;
-    delayTimer = other.delayTimer;
-    soundTimer = other.soundTimer;
-    stack      = other.stack;
-    SP         = other.SP;
-    key        = other.key;
+    V               = other.V;
+    I               = other.I;
+    PC              = other.PC;
+    mem             = other.mem;
+    gfx             = other.gfx;
+    delayTimer      = other.delayTimer;
+    soundTimer      = other.soundTimer;
+    stack           = other.stack;
+    SP              = other.SP;
+    key             = other.key;
+    randomGenerator = other.randomGenerator;
+    dist            = other.dist;
 
     other.V     = nullptr;
     other.mem   = nullptr;
@@ -149,24 +158,17 @@ void CHIP8Emulator::updateKeys()
 
 void CHIP8Emulator::reset()
 {
-    delete[] V;
-    delete[] mem;
-    delete[] gfx;
-    delete[] stack;
-    delete[] key;
-
-    V          = 0;
     I          = 0;
     PC         = PROGRAM_LOCATION;
     delayTimer = 0;
     soundTimer = 0;
     SP         = 0;
 
-    V     = new GeneralRegister[NUM_GENERAL_REGISTERS]{};
-    mem   = new unsigned char[MEMORY_SIZE]{};
-    gfx   = new unsigned char[NUM_PIXELS]{};
-    stack = new unsigned short[STACK_LEVEL]{};
-    key   = new unsigned char[NUM_KEYS]{};
+    std::memset(V, 0, NUM_GENERAL_REGISTERS);
+    std::memset(mem, 0, MEMORY_SIZE);
+    std::memset(gfx, 0, NUM_PIXELS);
+    std::memset(stack, 0, STACK_LEVEL);
+    std::memset(key, 0, NUM_KEYS);
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -174,7 +176,7 @@ void CHIP8Emulator::reset()
 unsigned short CHIP8Emulator::fetch()
 {
     unsigned short instruction = ((unsigned short)mem[PC]) << 8 | mem[PC+1];
-    PC = (PC + 2) % MEMORY_SIZE;
+    advancePC();
 
     return instruction;
 }
@@ -252,6 +254,38 @@ void CHIP8Emulator::updateSoundTimer()
         soundTimer--;
 }
 
+void CHIP8Emulator::advancePC()
+{
+    setPC(PC + 2);
+}
+
+void CHIP8Emulator::setPC(SpecialRegister newPC)
+{
+    PC = newPC % MEMORY_SIZE;
+}
+
+/////////////////////////////////////////////////////////////////////////
+
+void CHIP8Emulator::stackPush(unsigned short value)
+{
+    stack[SP++] = value;
+}
+
+unsigned short CHIP8Emulator::stackPop()
+{
+    return stack[SP--];
+}
+
+bool CHIP8Emulator::stackIsFull()
+{
+    return (SP >= STACK_LEVEL);
+}
+
+bool CHIP8Emulator::stackIsEmpty()
+{
+    return (SP == 0);
+}
+
 /////////////////////////////////////////////////////////////////////////
 
 void CHIP8Emulator::basicOperations(AddressArgument op)
@@ -274,42 +308,50 @@ void CHIP8Emulator::clear()
 
 void CHIP8Emulator::ret()
 {
-
+    if(!stackIsEmpty)
+        setPC(stackPop());
 }
 
 void CHIP8Emulator::jump(AddressArgument address)
 {
-
+    setPC(address);
 }
 
 void CHIP8Emulator::call(AddressArgument address)
 {
-
+    if(!stackIsFull())
+    {
+        stackPush(PC);
+        setPC(address);
+    }
 }
 
 void CHIP8Emulator::skipEqual(RegisterIndex x, RegisterArgument n)
 {
-
+    if(V[x] == n)
+        advancePC();
 }
 
 void CHIP8Emulator::skipNotEqual(RegisterIndex x, RegisterArgument n)
 {
-
+    if(V[x] != n)
+        advancePC();
 }
 
 void CHIP8Emulator::skipRegisterEqual(RegisterIndex x, RegisterIndex y)
 {
-
+    if(V[x] == V[y])
+        advancePC();
 }
 
 void CHIP8Emulator::movValue(RegisterIndex x, RegisterArgument n)
 {
-
+    V[x] = n;
 }
 
 void CHIP8Emulator::addValue(RegisterIndex x, RegisterArgument n)
 {
-
+    V[x] += n;
 }
 
 void CHIP8Emulator::registerOperations(RegisterIndex x, RegisterIndex y, RegisterArgument op)
@@ -348,63 +390,82 @@ void CHIP8Emulator::registerOperations(RegisterIndex x, RegisterIndex y, Registe
 
 void CHIP8Emulator::registerMov(RegisterIndex x, RegisterIndex y)
 {
-
+    V[x] = V[y];
 }
 
 void CHIP8Emulator::registerOr(RegisterIndex x, RegisterIndex y)
 {
-
+    V[x] |= V[y];
 }
 
 void CHIP8Emulator::registerAnd(RegisterIndex x, RegisterIndex y)
 {
-
+    V[x] &= V[y];
 }
 
+void CHIP8Emulator::registerXor(RegisterIndex x, RegisterIndex y)
+{
+    V[x] ^= V[y];
+}
 
 void CHIP8Emulator::registerAdd(RegisterIndex x, RegisterIndex y)
 {
-
+    unsigned short value = ((unsigned short)V[x]) + ((unsigned short)V[y]);
+    
+    V[0xf] = (value > 0xffff);
+    value &= 0xffff;
+    V[x] = value;
 }
 
 void CHIP8Emulator::registerSub(RegisterIndex x, RegisterIndex y)
 {
-
+    unsigned short value = ((unsigned short)V[x]) - ((unsigned short)V[y]);
+    
+    V[0xf] = (value <= 0xffff);
+    value &= 0xffff;
+    V[x] = value;
 }
 
 void CHIP8Emulator::registerShiftRight(RegisterIndex x, RegisterIndex y)
 {
-
+    V[0xf] = V[y] & 0x01;
+    V[x] = V[y] >> 1;
 }
 
 void CHIP8Emulator::registerMinus(RegisterIndex x, RegisterIndex y)
 {
-
+    unsigned short value = ((unsigned short)V[y]) - ((unsigned short)V[x]);
+    
+    V[0xf] = (value <= 0xffff);
+    value &= 0xffff;
+    V[x] = value;
 }
 
 void CHIP8Emulator::registerShiftLeft(RegisterIndex x, RegisterIndex y)
 {
-
+    V[0xf] = V[y] & 0x80;
+    V[x] = V[y] << 1;
 }
 
 void CHIP8Emulator::skipRegisterNotEqual(RegisterIndex x, RegisterIndex y)
 {
-
+    if(V[x] != V[y])
+        advancePC();
 }
 
 void CHIP8Emulator::movAddress(AddressArgument address)
 {
-
+    I = address;
 }
 
 void CHIP8Emulator::jumpAddress(AddressArgument address)
 {
-
+    setPC(address + V[0]);
 }
 
 void CHIP8Emulator::rand(RegisterIndex x, RegisterArgument n)
 {
-
+    V[x] = dist(randomGenerator) % n;
 }
 
 void CHIP8Emulator::draw(RegisterIndex x, RegisterIndex y, RegisterArgument n)
@@ -471,7 +532,7 @@ void CHIP8Emulator::specialOperations(RegisterIndex x, RegisterArgument op)
 
 void CHIP8Emulator::getDelayTimer(RegisterIndex x)
 {
-
+    V[x] = delayTimer;
 }
 
 void CHIP8Emulator::waitForKey(RegisterIndex x)
@@ -481,17 +542,17 @@ void CHIP8Emulator::waitForKey(RegisterIndex x)
 
 void CHIP8Emulator::setDelayTimer(RegisterIndex x)
 {
-
+    delayTimer = V[x];
 }
 
 void CHIP8Emulator::setSoundTimer(RegisterIndex x)
 {
-
+    soundTimer = V[x];
 }
 
 void CHIP8Emulator::addIndex(RegisterIndex x)
 {
-
+    I += V[x];
 }
 
 void CHIP8Emulator::getSpriteAddress(RegisterIndex x)
@@ -501,15 +562,21 @@ void CHIP8Emulator::getSpriteAddress(RegisterIndex x)
 
 void CHIP8Emulator::storeDecimal(RegisterIndex x)
 {
+    GeneralRegister value = V[x];
 
+    for(int i = 0; i < 3; i++)
+    {
+        mem[I+i] = value % 10;
+        value /= 10;
+    }
 }
 
 void CHIP8Emulator::storeRegisters(RegisterIndex x)
 {
-
+    std::memcpy(&mem[I], V, x);
 }
 
 void CHIP8Emulator::fillRegisters(RegisterIndex x)
 {
-
+    std::memcpy(V, &mem[I], x);
 }
