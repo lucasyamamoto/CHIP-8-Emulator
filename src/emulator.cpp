@@ -1,10 +1,13 @@
 #include "emulator.h"
+#include "ncursesio.h"
 #include <cstring>
 #include <fstream>
 
 #define NUM_GENERAL_REGISTERS 16
 #define MEMORY_SIZE 4096
-#define NUM_PIXELS (64 * 32)
+#define NUM_LINES 32
+#define NUM_COLUMNS 64
+#define NUM_PIXELS (NUM_COLUMNS * NUM_LINES)
 #define STACK_LEVEL 16
 #define NUM_KEYS 16
 #define PROGRAM_LOCATION 0x200
@@ -39,28 +42,30 @@ CHIP8Emulator& CHIP8Emulator::instance()
 /////////////////////////////////////////////////////////////////////////
 
 CHIP8Emulator::CHIP8Emulator()
-    : I(0), PC(PROGRAM_LOCATION), delayTimer(0), soundTimer(0), SP(0)
+    : I(0), PC(PROGRAM_LOCATION), delayTimer(0), soundTimer(0), SP(0), frameReady(false)
 {
     V     = new GeneralRegister[NUM_GENERAL_REGISTERS]{};
     mem   = new unsigned char[MEMORY_SIZE]{};
     gfx   = new unsigned char[NUM_PIXELS]{};
     stack = new unsigned short[STACK_LEVEL]{};
     key   = new unsigned char[NUM_KEYS]{};
+    io    = new NCursesIO();
 
     std::random_device seed;
-    randomGenerator = std::mt19937(seed);
+    randomGenerator = std::mt19937(seed());
     dist = std::uniform_int_distribution<RegisterArgument>();
 }
 
 CHIP8Emulator::CHIP8Emulator(const CHIP8Emulator& other)
     : I(other.I), PC(other.PC), delayTimer(other.delayTimer), soundTimer(other.soundTimer), 
-      SP(other.SP), randomGenerator(other.randomGenerator), dist(other.dist)
+      SP(other.SP), randomGenerator(other.randomGenerator), dist(other.dist), frameReady(other.frameReady)
 {
     V     = new GeneralRegister[NUM_GENERAL_REGISTERS];
     mem   = new unsigned char[MEMORY_SIZE];
     gfx   = new unsigned char[NUM_PIXELS];
     stack = new unsigned short[STACK_LEVEL];
     key   = new unsigned char[NUM_KEYS];
+    io    = other.io;
 
     std::memcpy(V    , other.V    , sizeof(GeneralRegister) * NUM_GENERAL_REGISTERS);
     std::memcpy(mem  , other.mem  , sizeof(unsigned char) * MEMORY_SIZE);
@@ -74,13 +79,14 @@ CHIP8Emulator::CHIP8Emulator(CHIP8Emulator&& other)
       gfx(other.gfx), delayTimer(other.delayTimer), 
       soundTimer(other.soundTimer), stack(other.stack), 
       SP(other.SP), key(other.key), randomGenerator(other.randomGenerator),
-      dist(other.dist)
+      dist(other.dist), frameReady(other.frameReady), io(other.io)
 {
     other.V     = nullptr;
     other.mem   = nullptr;
     other.gfx   = nullptr;
     other.stack = nullptr;
     other.key   = nullptr;
+    other.io    = nullptr;
 }
 
 CHIP8Emulator& CHIP8Emulator::operator=(const CHIP8Emulator& other)
@@ -92,12 +98,16 @@ CHIP8Emulator& CHIP8Emulator::operator=(const CHIP8Emulator& other)
     SP              = other.SP;
     randomGenerator = other.randomGenerator;
     dist            = other.dist;
+    frameReady      = other.frameReady;
+    io              = other.io;
 
     std::memcpy(V    , other.V    , sizeof(GeneralRegister) * NUM_GENERAL_REGISTERS);
     std::memcpy(mem  , other.mem  , sizeof(unsigned char) * MEMORY_SIZE);
     std::memcpy(gfx  , other.gfx  , sizeof(unsigned char) * NUM_PIXELS);
     std::memcpy(stack, other.stack, sizeof(unsigned short) * STACK_LEVEL);
     std::memcpy(key  , other.key  , sizeof(unsigned char) * NUM_KEYS);
+
+    return *this;
 }
 
 CHIP8Emulator& CHIP8Emulator::operator=(CHIP8Emulator&& other)
@@ -114,12 +124,17 @@ CHIP8Emulator& CHIP8Emulator::operator=(CHIP8Emulator&& other)
     key             = other.key;
     randomGenerator = other.randomGenerator;
     dist            = other.dist;
+    frameReady      = other.frameReady;
+    io              = other.io;
 
     other.V     = nullptr;
     other.mem   = nullptr;
     other.gfx   = nullptr;
     other.stack = nullptr;
     other.key   = nullptr;
+    other.io    = nullptr;
+
+    return *this;
 }
 
 CHIP8Emulator::~CHIP8Emulator()
@@ -129,6 +144,7 @@ CHIP8Emulator::~CHIP8Emulator()
     delete[] gfx;
     delete[] stack;
     delete[] key;
+    delete io;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -148,7 +164,13 @@ void CHIP8Emulator::runTick()
 
 bool CHIP8Emulator::hasNewFrame() const
 {
+    return frameReady;
+}
 
+void CHIP8Emulator::drawFrame()
+{
+    frameReady = false;
+    io->draw(gfx);
 }
 
 void CHIP8Emulator::updateKeys()
@@ -303,12 +325,13 @@ void CHIP8Emulator::basicOperations(AddressArgument op)
 
 void CHIP8Emulator::clear()
 {
-
+    frameReady = true;
+    std::memset(gfx, 0, NUM_PIXELS);
 }
 
 void CHIP8Emulator::ret()
 {
-    if(!stackIsEmpty)
+    if(!stackIsEmpty())
         setPC(stackPop());
 }
 
@@ -428,8 +451,8 @@ void CHIP8Emulator::registerSub(RegisterIndex x, RegisterIndex y)
 
 void CHIP8Emulator::registerShiftRight(RegisterIndex x, RegisterIndex y)
 {
-    V[0xf] = V[y] & 0x01;
-    V[x] = V[y] >> 1;
+    V[0xf] = V[x] & 0x01;
+    V[x] >>= 1;
 }
 
 void CHIP8Emulator::registerMinus(RegisterIndex x, RegisterIndex y)
@@ -443,8 +466,8 @@ void CHIP8Emulator::registerMinus(RegisterIndex x, RegisterIndex y)
 
 void CHIP8Emulator::registerShiftLeft(RegisterIndex x, RegisterIndex y)
 {
-    V[0xf] = V[y] & 0x80;
-    V[x] = V[y] << 1;
+    V[0xf] = V[x] & 0x80;
+    V[x] <<= 1;
 }
 
 void CHIP8Emulator::skipRegisterNotEqual(RegisterIndex x, RegisterIndex y)
@@ -465,12 +488,41 @@ void CHIP8Emulator::jumpAddress(AddressArgument address)
 
 void CHIP8Emulator::rand(RegisterIndex x, RegisterArgument n)
 {
-    V[x] = dist(randomGenerator) % n;
+    V[x] = dist(randomGenerator) & n;
 }
 
 void CHIP8Emulator::draw(RegisterIndex x, RegisterIndex y, RegisterArgument n)
 {
+    frameReady = true;
 
+    GeneralRegister xPos = V[x] % NUM_COLUMNS;
+    GeneralRegister yPos = V[y] % NUM_LINES;
+    V[0xf] = 0;
+
+    // For each row
+    for(int i = 0; (i < n) && (yPos < NUM_LINES); i++)
+    {
+        // Get sprite row
+        unsigned char spriteRow = mem[I+i];
+        // For each column
+        for(int j = 0; (j < 8) && (xPos < NUM_COLUMNS); j++)
+        {
+            // If bit is on
+            if(spriteRow & 1)
+            {
+                // Detect collision
+                if(gfx[xPos + (yPos * NUM_COLUMNS)])
+                    V[0xf] = 1;
+                // Flip pixel
+                gfx[xPos + (yPos * NUM_COLUMNS)] = !gfx[xPos + (yPos * NUM_COLUMNS)];
+            }
+            // Advance to next bit and next position
+            spriteRow >>= 1;
+            xPos++;
+        }
+        // Advance to next position
+        yPos++;
+    }
 }
 
 void CHIP8Emulator::skipByKey(RegisterIndex x, RegisterArgument op)

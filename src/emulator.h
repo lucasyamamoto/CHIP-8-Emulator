@@ -1,7 +1,9 @@
 #ifndef _EMULATOR_H
 
+#include "io.h"
 #include <string>
 #include <random>
+#include <functional>
 
 typedef unsigned char GeneralRegister;
 typedef unsigned short SpecialRegister;
@@ -29,6 +31,7 @@ public:
     void load(const std::string& file);
     void runTick();
     bool hasNewFrame() const;
+    void drawFrame();
     void updateKeys();
     void reset();
 private:
@@ -110,6 +113,10 @@ private:
     /* Random number generator */
     std::mt19937 randomGenerator;
     std::uniform_int_distribution<RegisterArgument> dist;
+
+    /* Input and output */
+    bool frameReady;
+    IO* io;
 };
 
 #endif      // _EMULATOR_H
