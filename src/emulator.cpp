@@ -28,6 +28,9 @@ void CHIP8Emulator::run(const std::string& file)
     {
         instance().runTick();
 
+        if(instance().hasNewFrame())
+            instance().drawFrame();
+
         instance().updateKeys();
     }
 }
@@ -521,6 +524,7 @@ void CHIP8Emulator::draw(RegisterIndex x, RegisterIndex y, RegisterArgument n)
             xPos++;
         }
         // Advance to next position
+        xPos = V[x] % NUM_COLUMNS;
         yPos++;
     }
 }

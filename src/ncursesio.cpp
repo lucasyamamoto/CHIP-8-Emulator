@@ -44,7 +44,7 @@ void NCursesIO::draw(const unsigned char* gfx)
 
         // Draw
         attron(COLOR_PAIR(pair));
-        mvaddch(y, x, ' ');
+        mvprintw(y, x*2, "  ");
         attroff(COLOR_PAIR(pair));
     }
 
